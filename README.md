@@ -9,5 +9,3 @@ need to run Vagrant LXC VMs inside your Ubuntu VM.
 
 It can also create a couple of new VMs using your own Ubuntu Precise amd64 
 Vagrant box.
-
-See the script itself for references to online resources.
