@@ -33,25 +33,28 @@ function create_vms {
   # `apt-get install vagrant` will try to install all sorts of shite you don't want
   # make sure the sudo user owns the things download and .vagrant dir created
   cd /home/$SUDO_USER
-  sudo -u $SUDO_USER wget http://files.vagrantup.com/packages/0ac2a87388419b989c3c0d0318cc97df3b0ed27d/vagrant_1.3.4_x86_64.deb
+  wget http://files.vagrantup.com/packages/0ac2a87388419b989c3c0d0318cc97df3b0ed27d/vagrant_1.3.4_x86_64.deb
   dpkg -i vagrant_1.3.4_x86_64.deb
+  rm vagrant_1.3.4_x86_64.deb
   sudo -u $SUDO_USER vagrant plugin install vagrant-lxc
 
   cd /home/$SUDO_USER/.vagrant.d/boxes
-  sudo -u $SUDO_USER wget https://raw.github.com/fgrehm/vagrant-lxc/master/boxes/build-ubuntu-box.sh
+  if [ ! -f build-ubuntu-box.sh ]; then
+    sudo -u $SUDO_USER wget https://raw.github.com/fgrehm/vagrant-lxc/master/boxes/build-ubuntu-box.sh
 
-  # The script, when I donwloaded it has a path bug around the common dir
-  VAGRANT_LXC=`find /home/${SUDO_USER}/.vagrant.d/gems/gems/ -maxdepth 1 -name "vagrant-lxc*" -type d | sort -r | head -1 | sed 's|\.|\\\.|g' | sed 's|\/|\\\/|g'`
-  sed -i "s/\.\/common/${VAGRANT_LXC}\/boxes\/common/" build-ubuntu-box.sh
-  sed -i "s/\${CWD}\/common/${VAGRANT_LXC}\/boxes\/common/" build-ubuntu-box.sh
-  # ... and apt-add-repository is needed for install-salt
-  sed -i 's/\(PACKAGES=(\)/\1python-software-properties /' build-ubuntu-box.sh
+    # The script, when I donwloaded it has a path bug around the common dir
+    VAGRANT_LXC=`find /home/${SUDO_USER}/.vagrant.d/gems/gems/ -maxdepth 1 -name "vagrant-lxc*" -type d | sort -r | head -1 | sed 's|\.|\\\.|g' | sed 's|\/|\\\/|g'`
+    sed -i "s|\.\/common|${VAGRANT_LXC}\/boxes\/common|" build-ubuntu-box.sh
+    sed -i "s|\${CWD}\/common|${VAGRANT_LXC}\/boxes\/common|" build-ubuntu-box.sh
+    # ... and apt-add-repository is needed for install-salt
+    sed -i 's/\(PACKAGES=(\)/\1python-software-properties /' build-ubuntu-box.sh
+  fi
 
   SALT=1 bash build-ubuntu-box.sh precise amd64
 
   # watch it work flawlessly...
   #
-  # create a 'box' and call is precise64, for example
+  # create a 'box' and call it precise64
   sudo -u $SUDO_USER vagrant box add precise64 output/vagrant-lxc-precise-amd64-`date +'%Y-%m-%d'`.box
   #
   # Configure two lxc machines to create from this box
@@ -86,7 +89,7 @@ if [ ! $SUDO_USER ]; then
 fi
 
 PROJECT_ROOT=$1
-if [ ! -z $PROJECT_ROOT ] && [ ! -d /home/$SUDO_USER/$PROJECT_ROOT ]; then
+if [ -n $PROJECT_ROOT ] && [ ! -d /home/$SUDO_USER/$PROJECT_ROOT ]; then
   echo "/home/$SUDO_USER/$PROJECT_ROOT is not a directory."
   usage
 fi
@@ -104,19 +107,20 @@ sudo apt-get install -y lxc redir
 sudo apt-get install -y avahi-daemon
 
 # help our sshd
-cat >> /etc/ssh/sshd_config <<NODNS
+if [ -f /etc/ssh/sshd_config ] && [ ! `grep UseDNS\=no /etc/ssh/sshd_config` ]; then
+  cat >> /etc/ssh/sshd_config <<NODNS
 
 #Reverse lookups are not useful in a local VM, so let's lower connection time.
 UseDNS=no
 NODNS
 
-restart ssh
+  restart ssh
+fi
 
 # configure the two network adapters
-# lo will be there already:
-# auto lo
-# iface lo inet loopback
-cat >> /etc/network/interfaces <<ETHN
+cat > /etc/network/interfaces <<ETHN
+auto lo
+iface lo inet loopback
 
 auto eth0
 iface eth0 inet dhcp
@@ -126,7 +130,8 @@ iface eth1 inet dhcp
 ETHN
 
 # Mac people might want to use Bonjour
-cat > /etc/avahi/services/ssh.service <<BONJOUR
+if [ ! -f /etc/avahi/services/ssh.service ]; then
+  cat > /etc/avahi/services/ssh.service <<BONJOUR
 <?xml version="1.0" standalone='no'?><!--*-nxml-*-->                       
 <!DOCTYPE service-group SYSTEM "avahi-service.dtd">                        
 <service-group>                                                            
@@ -138,19 +143,19 @@ cat > /etc/avahi/services/ssh.service <<BONJOUR
 </service-group>
 BONJOUR
 
-sed -i 's/\(#allow-interfaces=eth0\)/\1\nallow-interfaces=eth1/' /etc/avahi/avahi-daemon.conf
-sed -i 's/\(#enable-dbus=yes\)/\1\nenable-dbus=yes/' /etc/avahi/avahi-daemon.conf
+  sed -i 's/\(#allow-interfaces=eth0\)/\1\nallow-interfaces=eth1/' /etc/avahi/avahi-daemon.conf
+  sed -i 's/\(#enable-dbus=yes\)/\1\nenable-dbus=yes/' /etc/avahi/avahi-daemon.conf
 
-# bring up the network interfaces too
-restart network-manager
-restart avahi-daemon
-
+  # bring up the network interfaces too
+  restart network-manager
+  restart avahi-daemon
+fi
 
 # if you use ufw...
 #ufw allow in on lxcbr0
 #ufw allow out on lxcbr0
 #sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
 
-if [ ! -z $PROJECT_ROOT ]; then
+if [ $PROJECT_ROOT ]; then
   create_vms
 fi
