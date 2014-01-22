@@ -9,7 +9,9 @@
 # https://github.com/fgrehm/vagrant-lxc/blob/master/BOXES.md
 
 ## requirements:
-# Ubuntu 13.10 (maybe 12.04)
+# Ubuntu 13.04
+# * works on 13.10 and should on 12.04
+# * kernel for containers will be hosts, obviously
 # 
 # On this (host) VM
 # eth0 is a NAT or bridged interface to get outside 
@@ -28,21 +30,21 @@ function usage {
   exit
 }
 
-function create_vms {
+function create_containers {
   # grab (http://downloads.vagrantup.com) and install vagrant
   # `apt-get install vagrant` will try to install all sorts of shite you don't want
   # make sure the sudo user owns the things download and .vagrant dir created
   cd /home/$SUDO_USER
-  wget http://files.vagrantup.com/packages/0ac2a87388419b989c3c0d0318cc97df3b0ed27d/vagrant_1.3.4_x86_64.deb
-  dpkg -i vagrant_1.3.4_x86_64.deb
-  rm vagrant_1.3.4_x86_64.deb
+  wget http://files.vagrantup.com/packages/a40522f5fabccb9ddabad03d836e120ff5d14093/vagrant_1.3.5_x86_64.deb
+  dpkg -i vagrant_1.3.5_x86_64.deb
+  rm vagrant_*.deb
   sudo -u $SUDO_USER vagrant plugin install vagrant-lxc
 
   cd /home/$SUDO_USER/.vagrant.d/boxes
   if [ ! -f build-ubuntu-box.sh ]; then
     sudo -u $SUDO_USER wget https://raw.github.com/fgrehm/vagrant-lxc/master/boxes/build-ubuntu-box.sh
 
-    # The script, when I donwloaded it has a path bug around the common dir
+    # The script, when I downloaded it, has a path bug around the common dir
     VAGRANT_LXC=`find /home/${SUDO_USER}/.vagrant.d/gems/gems/ -maxdepth 1 -name "vagrant-lxc*" -type d | sort -r | head -1 | sed 's|\.|\\\.|g' | sed 's|\/|\\\/|g'`
     sed -i "s|\.\/common|${VAGRANT_LXC}\/boxes\/common|" build-ubuntu-box.sh
     sed -i "s|\${CWD}\/common|${VAGRANT_LXC}\/boxes\/common|" build-ubuntu-box.sh
@@ -50,7 +52,7 @@ function create_vms {
     sed -i 's/\(PACKAGES=(\)/\1python-software-properties /' build-ubuntu-box.sh
   fi
 
-  SALT=1 bash build-ubuntu-box.sh precise amd64
+  bash build-ubuntu-box.sh precise amd64
 
   # watch it work flawlessly...
   #
@@ -157,5 +159,5 @@ fi
 #sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
 
 if [ $PROJECT_ROOT ]; then
-  create_vms
+  create_containers
 fi
