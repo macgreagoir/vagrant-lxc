@@ -15,18 +15,20 @@
 # 
 # On this (host) VM
 # eth0 is a NAT or bridged interface to get outside 
-# eth1 is host-only network adapter
 #
-# use sudo to run this script
+# Use sudo to run this script
 #
-# project_root should be where you local git repos are stored
+# Assuming you wanto to use these LXC containers ot test code, projects_root
+# should be where you local code repos are stored
 
-## NOTE:
-# Beware if some hard-coding based on versions of Ubuntu and vagrant-lxc
+## NOTE: Hard-coded versions of Ubuntu and Vagrant
 
+cd ${0%/*}
+SCRIPT_DIR=$PWD
+cd $OLDPWD
 
 function usage {
-  echo -e "usage:\n$ sudo ./$0 [project_root]"
+  echo -e "usage:\n$ sudo $0 [projects_root]"
   exit
 }
 
@@ -34,55 +36,51 @@ function create_containers {
   # grab (http://downloads.vagrantup.com) and install vagrant
   # `apt-get install vagrant` will try to install all sorts of shite you don't want
   # make sure the sudo user owns the things download and .vagrant dir created
-  cd /home/$SUDO_USER
-  wget http://files.vagrantup.com/packages/a40522f5fabccb9ddabad03d836e120ff5d14093/vagrant_1.3.5_x86_64.deb
-  dpkg -i vagrant_1.3.5_x86_64.deb
-  rm vagrant_*.deb
+  if [ "`apt-cache policy vagrant | awk '/Installed/ {print $2}'`" != "1:1.3.5" ]; then
+    wget http://files.vagrantup.com/packages/a40522f5fabccb9ddabad03d836e120ff5d14093/vagrant_1.3.5_x86_64.deb
+    dpkg -i vagrant_1.3.5_x86_64.deb
+    rm vagrant_*.deb
+  fi
   sudo -u $SUDO_USER vagrant plugin install vagrant-lxc
 
   cd /home/$SUDO_USER/.vagrant.d/boxes
-  if [ ! -f build-ubuntu-box.sh ]; then
-    sudo -u $SUDO_USER wget https://raw.github.com/fgrehm/vagrant-lxc/master/boxes/build-ubuntu-box.sh
+  # grab our own build script for a precise amd64 box
+  cp $SCRIPT_DIR/build-ubuntu-box.sh . && chmod 0750 build-ubuntu-box.sh
+  ./build-ubuntu-box.sh
 
-    # The script, when I downloaded it, has a path bug around the common dir
-    VAGRANT_LXC=`find /home/${SUDO_USER}/.vagrant.d/gems/gems/ -maxdepth 1 -name "vagrant-lxc*" -type d | sort -r | head -1 | sed 's|\.|\\\.|g' | sed 's|\/|\\\/|g'`
-    sed -i "s|\.\/common|${VAGRANT_LXC}\/boxes\/common|" build-ubuntu-box.sh
-    sed -i "s|\${CWD}\/common|${VAGRANT_LXC}\/boxes\/common|" build-ubuntu-box.sh
-    # ... and apt-add-repository is needed for install-salt
-    sed -i 's/\(PACKAGES=(\)/\1python-software-properties /' build-ubuntu-box.sh
-  fi
-
-  bash build-ubuntu-box.sh precise amd64
-
-  # watch it work flawlessly...
-  #
   # create a 'box' and call it precise64
   sudo -u $SUDO_USER vagrant box add precise64 output/vagrant-lxc-precise-amd64-`date +'%Y-%m-%d'`.box
-  #
-  # Configure two lxc machines to create from this box
+
+  # Configure two lxc containers to create from this box
   cd /home/$SUDO_USER/$PROJECT_ROOT
   sudo -u $SUDO_USER cat > Vagrantfile <<VFILE
 Vagrant.configure("2") do |config|
 
-  config.vm.define "head0" do |head0|
-    head0.vm.box = "precise64"
-    head0.vm.hostname = "head0"
+  config.vm.define "container0" do |container0|
+    container0.vm.box = "precise64"
+    container0.vm.hostname = "container0"
   end
 
-  config.vm.define "head1" do |head1|
-    head1.vm.box = "precise64"
-    head1.vm.hostname = "head1"
+  config.vm.define "container1" do |container1|
+    container1.vm.box = "precise64"
+    container1.vm.hostname = "container1"
   end
 
 end
 VFILE
 
   cat <<MSG
-# boot the two machines
+###########################################################################
+#
+# boot the two containers
+  cd <projects_root>
   vagrant up --provider=lxc
-  vagrant ssh head0 # or head1
-# /vagrant on your lxc VMs maps to your gerrit repos
+  vagrant ssh container0 # or container1
+#
+# /vagrant on the lxc containers mounts projects_root, as passed the script
 # now read this: http://docs.vagrantup.com/v2/multi-machine/index.html
+#
+###########################################################################
 MSG
 }
 
@@ -105,9 +103,6 @@ sudo apt-get install -y openssh-server vim tmux htop ufw denyhosts build-essenti
 # grab vagrant-lxc dependencies
 sudo apt-get install -y lxc redir
 
-# the easy way to ssh in
-sudo apt-get install -y avahi-daemon
-
 # help our sshd
 if [ -f /etc/ssh/sshd_config ] && [ ! `grep UseDNS\=no /etc/ssh/sshd_config` ]; then
   cat >> /etc/ssh/sshd_config <<NODNS
@@ -119,45 +114,13 @@ NODNS
   restart ssh
 fi
 
-# configure the two network adapters
-cat > /etc/network/interfaces <<ETHN
-auto lo
-iface lo inet loopback
-
-auto eth0
-iface eth0 inet dhcp
-
-auto eth1
-iface eth1 inet dhcp
-ETHN
-
-# Mac people might want to use Bonjour
-if [ ! -f /etc/avahi/services/ssh.service ]; then
-  cat > /etc/avahi/services/ssh.service <<BONJOUR
-<?xml version="1.0" standalone='no'?><!--*-nxml-*-->                       
-<!DOCTYPE service-group SYSTEM "avahi-service.dtd">                        
-<service-group>                                                            
-    <name replace-wildcards="yes">%h</name>                                
-    <service>                                                              
-        <type>_ssh._tcp</type>                                             
-        <port>22</port>                                                    
-    </service>                                                             
-</service-group>
-BONJOUR
-
-  sed -i 's/\(#allow-interfaces=eth0\)/\1\nallow-interfaces=eth1/' /etc/avahi/avahi-daemon.conf
-  sed -i 's/\(#enable-dbus=yes\)/\1\nenable-dbus=yes/' /etc/avahi/avahi-daemon.conf
-
-  # bring up the network interfaces too
-  restart network-manager
-  restart avahi-daemon
+if [ -z "`ufw status | grep inactive`" ]; then
+  ufw allow in on lxcbr0
+  ufw allow out on lxcbr0
+  sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
 fi
 
-# if you use ufw...
-#ufw allow in on lxcbr0
-#ufw allow out on lxcbr0
-#sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
-
+# this is really what you came here for
 if [ $PROJECT_ROOT ]; then
   create_containers
 fi
