@@ -88,8 +88,8 @@ sed -i -e \
 
 PACKAGES=(vim curl wget man-db bash-completion)
 chroot ${ROOTFS} apt-get update
-chroot ${ROOTFS} apt-get install ${PACKAGES[*]} -y --force-yes
 chroot ${ROOTFS} apt-get upgrade -y --force-yes
+chroot ${ROOTFS} apt-get install ${PACKAGES[*]} -y --force-yes
 
 
 ##################################################################################
