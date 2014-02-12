@@ -52,7 +52,7 @@ function create_containers {
   sudo -u $SUDO_USER vagrant box add precise64 output/vagrant-lxc-precise-amd64-`date +'%Y-%m-%d'`.box
 
   # Configure two lxc containers to create from this box
-  cd /home/$SUDO_USER/$PROJECT_ROOT
+  cd /home/$SUDO_USER/$PROJECTS_ROOT
   sudo -u $SUDO_USER cat > Vagrantfile <<VFILE
 Vagrant.configure("2") do |config|
 
@@ -88,14 +88,11 @@ if [ ! $SUDO_USER ]; then
   usage
 fi
 
-PROJECT_ROOT=$1
-if [ -n $PROJECT_ROOT ] && [ ! -d /home/$SUDO_USER/$PROJECT_ROOT ]; then
-  echo "/home/$SUDO_USER/$PROJECT_ROOT is not a directory."
+PROJECTS_ROOT=$1
+if [ -n $PROJECTS_ROOT ] && [ ! -d /home/$SUDO_USER/$PROJECT_ROOT ]; then
+  echo "/home/$SUDO_USER/$PROJECTS_ROOT is not a directory."
   usage
 fi
-
-sudo apt-get update 
-sudo apt-get dist-upgrade
 
 # grab the basics we need to get stuff done
 sudo apt-get install -y openssh-server vim tmux htop ufw denyhosts build-essential
@@ -121,6 +118,6 @@ if [ -z "`ufw status | grep inactive`" ]; then
 fi
 
 # this is really what you came here for
-if [ $PROJECT_ROOT ]; then
+if [ $PROJECTS_ROOT ]; then
   create_containers
 fi
