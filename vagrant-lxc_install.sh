@@ -23,9 +23,11 @@
 
 ## NOTE: Hard-coded versions of Ubuntu and Vagrant
 
-cd ${0%/*}
+# note where this script lives
+CWD=$PWD
+cd ${0%/*} 2> /dev/null
 SCRIPT_DIR=$PWD
-cd $OLDPWD
+cd $CWD
 
 function usage {
   echo -e "usage:\n$ sudo $0 [projects_root]"
